@@ -155,7 +155,7 @@ resource "aws_dynamodb_table" "main" {
 resource "aws_lambda_function" "main" {
     filename = "lambda.zip"
     function_name = "pez-lambda"
-    role = "arn:aws:iam::123456789012:role/pez-lambda-role"
+    role = aws_iam_role.iam_for_lambda.arn
     handler = "main.handler"
     runtime = "nodejs18.x"
     timeout = 60
