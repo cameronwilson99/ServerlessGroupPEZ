@@ -1,5 +1,7 @@
 provider "aws" {
     region = "us-east-2"
+    shared_credentials_files = ["aws-creds"]
+    profile                  = "default"
 }
 
 resource "aws_vpc" "main" {
@@ -61,23 +63,46 @@ resource "aws_s3_bucket" "main" {
     bucket = "pez-bucket"
 }
 
+resource "aws_s3_bucket_versioning" "main" {
+  bucket = aws_s3_bucket.main.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_ownership_controls" "main" {
+  bucket = aws_s3_bucket.main.id
+
+  rule {
+    object_ownership = "BucketOwnerPreferred"
+  }
+}
+
 resource "aws_s3_bucket_public_access_block" "main" {
-    bucket = aws_s3_bucket.main.id
-    block_public_acls = false
-    block_public_policy = false
-    ignore_public_acls = false
-    restrict_public_buckets = false
+  bucket = aws_s3_bucket.main.id
+
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
 }
 
 resource "aws_s3_bucket_acl" "main" {
-    bucket = aws_s3_bucket.main.id
-    acl = "public-read"
+  depends_on = [
+    aws_s3_bucket_ownership_controls.main,
+    aws_s3_bucket_public_access_block.main,
+  ]
+
+  bucket = aws_s3_bucket.main.id
+  acl    = "public-read"
 }
 
 resource "aws_s3_bucket_website_configuration" "main" {
-    bucket = aws_s3_bucket.main.id
-    index_document = "index.html"
-    error_document = "error.html"
+  bucket = aws_s3_bucket.main.id
+
+  index_document {
+    suffix = "index.html"
+  }
 }
 
 resource "aws_s3_bucket_policy" "main" {
@@ -93,6 +118,15 @@ resource "aws_s3_bucket_policy" "main" {
             }
         ]
     })
+}
+
+resource "aws_s3_object" "index" {
+  bucket = aws_s3_bucket.main.id
+  key    = "index.html"
+  acl    = "public-read"
+  content_type = "text/html"
+  source = "${path.module}/../website/index.html"
+  source_hash = md5(file("${path.module}/../website/index.html"))
 }
 
 resource "aws_cloudfront_distribution" "main" {
@@ -152,13 +186,26 @@ resource "aws_dynamodb_table" "main" {
     }
 }
 
+data "archive_file" "lambda_archive" {
+  type        = "zip"
+  source_dir  = "../lambda"
+  output_path = "../build/packages/lambda.zip"
+
+  output_file_mode = "0644"
+}
 resource "aws_lambda_function" "main" {
-    filename = "lambda.zip"
-    function_name = "pez-lambda"
-    role = aws_iam_role.iam_for_lambda.arn
-    handler = "main.handler"
-    runtime = "nodejs18.x"
-    timeout = 60
+  function_name     = "dynamodb-get-pez"
+  role              = aws_iam_role.iam_for_lambda.arn
+  runtime           = "nodejs20.x"
+  handler           = "src/index.run"
+  source_code_hash  = data.archive_file.lambda_archive.output_base64sha256
+}
+
+resource "aws_lambda_permission" "main" {
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.main.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "arn:aws:execute-api:${local.region}:${local.account_id}:${aws_api_gateway_rest_api.main.id}/*/*/*"
 }
 
 resource "aws_iam_role" "iam_for_lambda" {

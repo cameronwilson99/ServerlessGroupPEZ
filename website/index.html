@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Product Information</title>
+    <style>
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 20px;
+        }
+
+        .product-card {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: center;
+        }
+        .header {
+            text-align: center;
+            padding: 20px;
+            font-size: large;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Pez Headz</h1>
+    </div>
+    <div id="productGrid" class="grid-container"></div>
+    <script src="app.js"></script>
+</body>
+</html>
