@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', async () => {
     try {
-        const response = await fetch('Replace-with-gateway-url/pez-getter');
+        const response = await fetch('https://n41znl1lw5.execute-api.us-east-2.amazonaws.com/pez');
         const productInfoList = await response.json();
 
         const productGrid = document.getElementById('productGrid');
@@ -8,8 +8,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const productCard = document.createElement('div');
             productCard.classList.add('product-card');
             productCard.innerHTML = `
-                <h3>${productInfo.productName}</h3>
-                <p>${productInfo.description}</p>
+                <img src="img/${productInfo.id}.jpeg" width="150" height="150">
+                <h3>${productInfo.id}</h3>
                 <p>Price: $${productInfo.price}</p>
             `;
             productGrid.appendChild(productCard);

@@ -22,7 +22,7 @@ resource "aws_subnet" "main2" {
     availability_zone = "us-east-2b"
 }
 
-resource aws_internet_gateway "main" {
+resource "aws_internet_gateway" "main" {
     vpc_id = aws_vpc.main.id
 }
 
@@ -87,16 +87,6 @@ resource "aws_s3_bucket_public_access_block" "main" {
   restrict_public_buckets = false
 }
 
-resource "aws_s3_bucket_acl" "main" {
-  depends_on = [
-    aws_s3_bucket_ownership_controls.main,
-    aws_s3_bucket_public_access_block.main,
-  ]
-
-  bucket = aws_s3_bucket.main.id
-  acl    = "public-read"
-}
-
 resource "aws_s3_bucket_website_configuration" "main" {
   bucket = aws_s3_bucket.main.id
 
@@ -129,6 +119,14 @@ resource "aws_s3_object" "index" {
   source_hash = md5(file("${path.module}/../website/index.html"))
 }
 
+resource "aws_s3_object" "app" {
+  bucket = aws_s3_bucket.main.id
+  key    = "app.js"
+  acl    = "public-read"
+  source = "${path.module}/../website/app.js"
+  source_hash = md5(file("${path.module}/../website/app.js"))
+}
+
 resource "aws_cloudfront_distribution" "main" {
     origin {
         domain_name = aws_s3_bucket.main.bucket_regional_domain_name
@@ -154,7 +152,7 @@ resource "aws_cloudfront_distribution" "main" {
 
         min_ttl     = 0
         default_ttl = 3600
-        max_ttl     = 86400
+        max_ttl     = 3600
     }
 
     restrictions {
@@ -186,26 +184,56 @@ resource "aws_dynamodb_table" "main" {
     }
 }
 
-data "archive_file" "lambda_archive" {
+data "archive_file" "lambda" {
   type        = "zip"
   source_dir  = "../lambda"
   output_path = "../build/packages/lambda.zip"
-
   output_file_mode = "0644"
 }
-resource "aws_lambda_function" "main" {
-  function_name     = "dynamodb-get-pez"
-  role              = aws_iam_role.iam_for_lambda.arn
-  runtime           = "nodejs20.x"
-  handler           = "src/index.run"
-  source_code_hash  = data.archive_file.lambda_archive.output_base64sha256
+
+resource "aws_s3_bucket" "backend" {
+    bucket = "pez-backend"
 }
 
-resource "aws_lambda_permission" "main" {
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.main.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "arn:aws:execute-api:${local.region}:${local.account_id}:${aws_api_gateway_rest_api.main.id}/*/*/*"
+resource "aws_s3_bucket_policy" "lambda_access" {
+  bucket = aws_s3_bucket.backend.id
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect    = "Allow",
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        },
+        Action    = "s3:GetObject",
+        Resource  = [
+          "${aws_s3_bucket.backend.arn}/*",
+        ],
+      },
+    ],
+  })
+}
+
+resource "aws_s3_object" "lambda_upload" {
+  bucket      = aws_s3_bucket.backend.id
+  key         = "lambda/code.zip"
+  source      = data.archive_file.lambda.output_path
+  source_hash = data.archive_file.lambda.output_md5
+}
+
+resource "aws_lambda_function" "main" {
+  function_name = "dynamodb-get-pez"
+  role          = aws_iam_role.iam_for_lambda.arn
+  handler       = "handler.handler"
+  runtime       = "python3.11"
+  timeout       = 30
+
+  s3_bucket         = aws_s3_bucket.backend.id
+  s3_key            = aws_s3_object.lambda_upload.key
+  s3_object_version = aws_s3_object.lambda_upload.version_id
+
+  depends_on = [ aws_s3_object.lambda_upload ]
 }
 
 resource "aws_iam_role" "iam_for_lambda" {
@@ -225,28 +253,46 @@ resource "aws_iam_role" "iam_for_lambda" {
   })
 }
 
-resource "aws_api_gateway_rest_api" "main" {
-    name = "pez-api"
+resource "aws_iam_role_policy" "lambda_execution" {
+  name = "lambda_execution_policy"
+  role = aws_iam_role.iam_for_lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Action = [
+          "lambda:InvokeFunction",
+          "dynamodb:Scan",
+        ],
+        Effect   = "Allow",
+        Resource = [aws_lambda_function.main.arn],
+      },
+      {
+        Action   = "dynamodb:Scan",
+        Effect   = "Allow",
+        Resource = aws_dynamodb_table.main.arn,
+      },
+    ],
+  })
 }
 
-resource "aws_api_gateway_resource" "resource" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  parent_id   = aws_api_gateway_rest_api.main.root_resource_id
-  path_part   = "items"
+resource "aws_apigatewayv2_api" "main" {
+  name          = "pez-test"
+  protocol_type = "HTTP"
+  cors_configuration {
+    allow_origins = ["*"]
+  }
 }
 
-resource "aws_api_gateway_method" "method" {
-  rest_api_id   = aws_api_gateway_rest_api.main.id
-  resource_id   = aws_api_gateway_resource.resource.id
-  http_method   = "GET"
+resource "aws_apigatewayv2_integration" "main" {
+  api_id             = aws_apigatewayv2_api.main.id
+  integration_type   = "AWS_PROXY"
+  integration_uri    = "arn:aws:lambda:us-east-2:161506252702:function:dynamodb-get-pez"
+  integration_method = "POST"
+  payload_format_version = "2.0"
 }
 
-resource "aws_api_gateway_integration" "main" {
-    rest_api_id = aws_api_gateway_rest_api.main.id
-    resource_id = aws_api_gateway_rest_api.main.root_resource_id
-    http_method = aws_api_gateway_method.method.http_method
-
-    integration_http_method = "GET"
-    type                    = "AWS_PROXY"
-    uri                     = aws_lambda_function.main.invoke_arn
+output "api_url" {
+  value = aws_apigatewayv2_api.main.api_endpoint
 }
