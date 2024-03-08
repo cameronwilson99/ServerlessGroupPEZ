@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        TF_ACTION_WORKING_DIR: '.'
+        TF_ACTION_WORKING_DIR: './terraform'
         AWS_ACCESS_KEY_ID:  ${{ secrets.AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY:  ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     steps:
@@ -23,14 +23,14 @@ jobs:
       uses: hashicorp/setup-terraform@v3
       
     - name: Terraform Init
-      run: terraform init -chdir=terraform
+      run: terraform init
         
     - name: Terraform validate
-      run: terraform validate -chdir=terraform
+      run: terraform validate
 
     - name: Terraform Plan
-      run: terraform plan -input=false -chdir=terraform
+      run: terraform plan -input=false
 
     - name: Terraform Apply
       if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-      run: terraform apply -auto-approve -chdir=terraform
+      run: terraform apply -auto-approve
