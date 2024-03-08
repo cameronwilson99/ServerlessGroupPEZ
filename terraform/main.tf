@@ -1,7 +1,13 @@
 provider "aws" {
-    region = "us-east-2"
-    shared_credentials_files = ["aws-creds"]
-    profile                  = "default"
+  region = "us-east-2"
+}
+
+terraform {
+  backend "s3" {
+    bucket = "cw629-terraform-backend"
+    key    = "ServerlessGroupPEZ/terraform.tfstate"
+    region = "us-west-2"
+  }
 }
 
 resource "aws_vpc" "main" {
@@ -283,6 +289,12 @@ resource "aws_apigatewayv2_api" "main" {
   cors_configuration {
     allow_origins = ["*"]
   }
+}
+
+resource "aws_apigatewayv2_route" "main" {
+  api_id    = aws_apigatewayv2_api.main.id
+  route_key = "GET /pez"
+  target    = "integrations/${aws_apigatewayv2_integration.main.id}"
 }
 
 resource "aws_apigatewayv2_integration" "main" {

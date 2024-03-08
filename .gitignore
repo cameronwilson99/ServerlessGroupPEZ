@@ -2,3 +2,5 @@
 .terraform*
 lambda.zip
 aws-creds
+build/
+*.tfstate*
