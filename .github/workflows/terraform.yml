@@ -23,14 +23,14 @@ jobs:
       uses: hashicorp/setup-terraform@v3
       
     - name: Terraform Init
-      run: terraform init
+      run: terraform init terraform/
         
     - name: Terraform validate
-      run: terraform validate
+      run: terraform validate terraform/
 
     - name: Terraform Plan
-      run: terraform plan -input=false
+      run: terraform plan -input=false terraform/
 
     - name: Terraform Apply
       if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-      run: terraform apply -auto-approve
+      run: terraform apply -auto-approve terraform/
