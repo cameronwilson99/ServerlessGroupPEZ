@@ -18,6 +18,8 @@ jobs:
 
     - name: Checkout Repo
       uses: actions/checkout@v4
+
+    - name: Change Directory
       run: cd terraform/
 
     - name: Terraform Setup
